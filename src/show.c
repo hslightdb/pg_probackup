@@ -3,7 +3,7 @@
  * show.c: show backup information.
  *
  * Portions Copyright (c) 2009-2011, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
- * Portions Copyright (c) 2015-2019, Postgres Professional
+ * Portions Copyright (c) 2015-2022, Postgres Professional
  *
  *-------------------------------------------------------------------------
  */
@@ -12,6 +12,7 @@
 
 #include <time.h>
 #include <dirent.h>
+#include <locale.h>
 #include <sys/stat.h>
 
 #include "utils/json.h"
@@ -71,6 +72,24 @@ static PQExpBufferData show_buf;
 static bool first_instance = true;
 static int32 json_level = 0;
 
+typedef enum {
+	LOCALE_PROBACKUP,
+	LOCALE_ENV
+} output_numeric_locale;
+
+static void set_output_numeric_locale(output_numeric_locale loc) {
+	const char *l = loc == LOCALE_PROBACKUP ? "C" : (const char*)getenv("LC_NUMERIC");
+	// Setting environment-specified locale
+#ifdef HAVE_USELOCALE
+		uselocale(newlocale(LC_NUMERIC_MASK, l, (locale_t) 0));
+#else
+#ifdef HAVE__CONFIGTHREADLOCALE
+		_configthreadlocale(_ENABLE_PER_THREAD_LOCALE);
+#endif
+		setlocale(LC_NUMERIC, l);
+#endif
+}
+
 /*
  * Entry point of pg_probackup SHOW subcommand.
  */
@@ -88,6 +107,7 @@ do_show(CatalogState *catalogState, InstanceState *instanceState,
 		requested_backup_id != INVALID_BACKUP_ID)
 		elog(ERROR, "You cannot specify --archive and (-i, --backup-id) options together");
 
+	set_output_numeric_locale(LOCALE_ENV);
 	/*
 	 * if instance is not specified,
 	 * show information about all instances in this backup catalog
@@ -110,6 +130,7 @@ do_show(CatalogState *catalogState, InstanceState *instanceState,
 				show_instance(instanceState, INVALID_BACKUP_ID, true);
 		}
 		show_instance_end();
+		set_output_numeric_locale(LOCALE_PROBACKUP);
 
 		return 0;
 	}
@@ -128,6 +149,7 @@ do_show(CatalogState *catalogState, InstanceState *instanceState,
 			show_instance(instanceState, requested_backup_id, false);
 
 		show_instance_end();
+		set_output_numeric_locale(LOCALE_PROBACKUP);
 
 		return 0;
 	}
@@ -141,6 +163,7 @@ do_show(CatalogState *catalogState, InstanceState *instanceState,
 		else
 			show_backup(instanceState, requested_backup_id);
 
+		set_output_numeric_locale(LOCALE_PROBACKUP);
 		return 0;
 	}
 }
@@ -1045,8 +1068,9 @@ show_archive_json(const char *instance_name, uint32 xlog_seg_size,
 		appendPQExpBuffer(buf, "%lu", tlinfo->size);
 
 		json_add_key(buf, "zratio", json_level);
+
 		if (tlinfo->size != 0)
-			zratio = ((float)xlog_seg_size*tlinfo->n_xlog_files) / tlinfo->size;
+			zratio = ((float) xlog_seg_size * tlinfo->n_xlog_files) / tlinfo->size;
 		appendPQExpBuffer(buf, "%.2f", zratio);
 
 		if (tlinfo->closest_backup != NULL)
