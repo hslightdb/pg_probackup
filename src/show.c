@@ -78,7 +78,8 @@ typedef enum {
 } output_numeric_locale;
 
 static void set_output_numeric_locale(output_numeric_locale loc) {
-	const char *l = loc == LOCALE_PROBACKUP ? "C" : (const char*)getenv("LC_NUMERIC");
+	const char *l = loc == LOCALE_PROBACKUP ? "C" :
+							getenv("LC_NUMERIC") != NULL ? (const char *)getenv("LC_NUMERIC") : "C";
 	// Setting environment-specified locale
 #ifdef HAVE_USELOCALE
 		uselocale(newlocale(LC_NUMERIC_MASK, l, (locale_t) 0));
